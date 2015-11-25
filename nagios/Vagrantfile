@@ -1,0 +1,41 @@
+# -*- mode: ruby -*-
+# # vi: set ft=ruby :
+
+Vagrant.require_version ">= 1.6.0"
+
+$num_instances = 3
+$instance_name_prefix = "nag"
+$vm_gui = false
+$vm_memory = 2048
+$vm_cpus = 1
+
+Vagrant.configure("2") do |config|
+  (1..$num_instances).each do |i|
+    config.vm.box = "centos/7"
+    config.vm.define vm_name = "%s-%02d" % [$instance_name_prefix, i] do |config|
+      # Set up hostname.
+      config.vm.hostname = vm_name
+      # Set up VM.
+      file_to_disk = "./large_disk#{i}.vdi"
+      config.vm.provider :virtualbox do |vb|
+        vb.gui = $vm_gui
+        vb.memory = $vm_memory
+        vb.cpus = $vm_cpus
+        vb.customize ['modifyvm', :id, '--nictype1', 'virtio']
+ 	 unless File.exist?(file_to_disk)
+		vb.customize ['createhd', '--filename', file_to_disk,'--size', 20 * 1024]
+        	vb.customize ['storageattach', :id, '--storagectl', 'IDE Controller', '--port', 1, '--device', 0, '--type', 'hdd', '--medium', file_to_disk]
+	 end
+      end
+
+      # Set up networking.
+      ip = "172.16.8.#{i+100}"
+      config.vm.network :private_network, ip: ip, nic_type: "virtio"
+      config.vm.network "forwarded_port", guest: 80, host: "808#{i-1}"
+      config.vm.network "forwarded_port", guest: 443, host: "844#{i+2}"
+
+      # Provision machine.
+      config.vm.provision "shell", path: "scripts/provision.sh", :args => "%s %d %d" % [$instance_name_prefix, i, $num_instances]
+    end
+  end
+end
